@@ -1,20 +1,34 @@
-from config import carla, CARLA_HOST, CARLA_PORT, CARLA_TIMEOUT,CARLA_MAP
+from config import *
 import cv2
+import threading
+from dynamic_weather import main as weather
 import numpy as np
-from config import IMAGE_WIDTH, IMAGE_HEIGHT
 from carla_utils.carla_manager import CarlaManager
 from carla_utils.sensor_manager import SensorManager
 from yolo_utils.yolo_manager import YoloManager
 from utils.helpers import process_image
 
-def main():
+
+def dynamic_weather(world, client):
+    print('Loading vehicles and people script')
+    weather(world=world, client=client)
+
+
+def run_object_detection(world):
     # Initialize managers
     carla_manager = CarlaManager()
     # Change the map
-    carla_manager.world = carla_manager.client.load_world(CARLA_MAP)
+    carla_manager.world = world
 
-    vehicle = carla_manager.spawn_vehicle()
-    sensor_manager = SensorManager(carla_manager.world, vehicle)
+    my_vehicle = carla_manager.spawn_vehicle()
+    if my_vehicle is None:
+        print("Error: Failed to spawn the main vehicle!")
+        return
+    time.sleep(5)
+    
+    carla_manager.spawn_multiple_vehicles()
+
+    sensor_manager = SensorManager(carla_manager.world, my_vehicle)
     yolo_manager = YoloManager()
 
     # Spawn cameras
@@ -80,7 +94,28 @@ def main():
         cv2.destroyAllWindows()
         camera_rgb.stop()
         camera_sem.stop()
+        camera_depth.stop()
         carla_manager.cleanup()
+
+def main():
+    # Initialize CARLA client and load the map
+    carla_manager = CarlaManager()
+    # Use the same world for spawning NPCs and object detection
+    world = carla_manager.world
+
+    # Create a new thread to run the spawn_npc function
+    carla_thread = threading.Thread(target=dynamic_weather, args=(world, carla_manager.client))
+    detection_thread = threading.Thread(target=run_object_detection, args=(world,))
+
+    # Start the threads
+    carla_thread.start()
+    detection_thread.start()
+   
+
+    # Wait for both threads to finish
+    carla_thread.join()
+    detection_thread.join()
+
 
 if __name__ == '__main__':
     main()

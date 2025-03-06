@@ -1,4 +1,6 @@
-from config import carla, CARLA_HOST, CARLA_PORT, CARLA_TIMEOUT, CARLA_MAP
+from config import *
+import threading
+from spawn_npc import main as spawn_main
 import cv2
 import numpy as np
 from config import IMAGE_WIDTH, IMAGE_HEIGHT
@@ -6,21 +8,37 @@ from carla_utils.carla_manager import CarlaManager
 from carla_utils.sensor_manager import SensorManager
 from yolo_utils.yolo_manager import YoloManager
 from utils.helpers import process_image
+import time
 
-def main():
+def run_spawn_npc(world, client):
+    print('Loading vehicles and people script')
+    spawn_main(world=world, client=client)  # Pass both world and client
+
+
+def run_object_detection(world):
     # Initialize managers
     carla_manager = CarlaManager()
 
       # Change the map
-    carla_manager.world = carla_manager.client.load_world(CARLA_MAP)
+    carla_manager.world = world
 
-    vehicle = carla_manager.spawn_vehicle()
-    sensor_manager = SensorManager(carla_manager.world, vehicle)
+    my_vehicle = carla_manager.spawn_vehicle()
+    if my_vehicle is None:
+        print("Error: Failed to spawn the main vehicle!")
+        return
+    
+    sensor_manager = SensorManager(carla_manager.world, my_vehicle)
     yolo_manager = YoloManager()
+    
+    carla_manager.spawn_multiple_vehicles()
 
     # Spawn RGB camera
     camera_rgb = sensor_manager.spawn_camera('rgb')
     camera_depth = sensor_manager.spawn_camera('depth')
+
+    if camera_rgb is None or camera_depth is None:
+        print("Error: One or more cameras failed to spawn.")
+        return
 
     # Data dictionary to store images and detections
     camera_data = {'rgb_image': np.zeros((IMAGE_WIDTH, IMAGE_HEIGHT, 4)),
@@ -69,6 +87,34 @@ def main():
         camera_rgb.stop()
         camera_depth.stop()
         carla_manager.cleanup()
+
+
+def main():
+    # Initialize CARLA client and load the map
+    carla_manager = CarlaManager()
+
+     # Use the same world for spawning NPCs and object detection
+    world = carla_manager.world
+
+    # Create a new thread to run the spawn_npc function
+    carla_thread = threading.Thread(target=run_spawn_npc, args=(world, carla_manager.client))
+    carla_thread.start()
+    
+
+
+    detection_thread = threading.Thread(target=run_object_detection, args=(world,))
+
+    # Start the threads
+    
+    detection_thread.start()
+    
+
+    # Wait for both threads to finish
+    
+    detection_thread.join()
+    carla_thread.join()
+
+        
 
 if __name__ == '__main__':
     main()

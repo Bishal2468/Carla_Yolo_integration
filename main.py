@@ -1,4 +1,4 @@
-from config import carla, CARLA_HOST, CARLA_PORT, CARLA_TIMEOUT, CARLA_MAP
+from config import *
 import cv2
 import numpy as np
 from config import IMAGE_WIDTH, IMAGE_HEIGHT
